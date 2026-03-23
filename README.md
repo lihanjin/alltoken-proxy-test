@@ -40,28 +40,64 @@ Install the tool:
 pip install -e .
 ```
 
+## Where To Fill Addresses
+
+The upstream addresses live in the profile config, not in the command line.
+
+Recommended workflow:
+
+```bash
+cp profiles.example.json profiles.local.json
+```
+
+Then edit `profiles.local.json`:
+
+- `profiles.<name>.entry_url` is the local URL the client should point to
+- `profiles.<name>.stages[0].upstream` is the next hop after the client entry
+- `profiles.<name>.stages[1].upstream` is the next hop after `new API`
+- `profiles.<name>.stages[2].upstream` is the real `cliproxy` or `sub2api` target
+
+If you have different endpoints for `claude code`, `opencode`, or `geminicli`, add one profile per chain.
+
+Example:
+
+```json
+{
+  "profiles": {
+    "claude-code/cliproxy/us1": {
+      "entry_url": "http://127.0.0.1:4010",
+      "stages": [
+        { "listen": "127.0.0.1:4010", "upstream": "http://127.0.0.1:4011" },
+        { "listen": "127.0.0.1:4011", "upstream": "http://127.0.0.1:4012" },
+        { "listen": "127.0.0.1:4012", "upstream": "https://your-real-claude-endpoint" }
+      ]
+    }
+  }
+}
+```
+
 Run the full chain for one profile:
 
 ```bash
-python -m tapchain run --config profiles.example.json --profile claude-code/cliproxy/us1
+python -m tapchain run --config profiles.local.json --profile claude-code/cliproxy/us1
 ```
 
 Print the client env for a profile:
 
 ```bash
-python -m tapchain env --config profiles.example.json --profile claude-code/cliproxy/us1 --client claude-code
+python -m tapchain env --config profiles.local.json --profile claude-code/cliproxy/us1 --client claude-code
 ```
 
 Run a client with the right env vars injected:
 
 ```bash
-python -m tapchain exec --config profiles.example.json --profile claude-code/cliproxy/us1 --client claude-code -- claude
+python -m tapchain exec --config profiles.local.json --profile claude-code/cliproxy/us1 --client claude-code -- claude
 ```
 
 Switch the active profile in the config:
 
 ```bash
-python -m tapchain switch --config profiles.example.json claude-code/sub2api/us1
+python -m tapchain switch --config profiles.local.json claude-code/sub2api/us1
 ```
 
 ## Direct hop logging
@@ -86,6 +122,15 @@ For the `sub2api` route, use the equivalent chain with the `newapi-sub2api` stag
 
 - `logs/events.jsonl` for structured events
 - `logs/raw/<trace_id>/` for raw request and response bodies
+
+## New User Checklist
+
+1. Copy [`profiles.example.json`](./profiles.example.json) to `profiles.local.json`.
+2. Fill in the real upstream URLs for your `new API`, `cliproxy`, and `sub2api` chain.
+3. Run `python -m tapchain run --config profiles.local.json --profile <profile-name>`.
+4. Point the client to `profiles.<name>.entry_url` using `tapchain env` or `tapchain exec`.
+5. Send one request from `claude code`, `opencode`, or `geminicli`.
+6. Check `logs/events.jsonl` and `logs/raw/`.
 
 ## Notes
 
