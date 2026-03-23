@@ -1,0 +1,113 @@
+{
+  "active_profile": "claude-code/cliproxy/us1",
+  "clients": {
+    "claude-code": {
+      "api_key": "sk-local",
+      "env": {
+        "ANTHROPIC_BASE_URL": "{entry_url}",
+        "ANTHROPIC_API_KEY": "{api_key}"
+      }
+    },
+    "opencode": {
+      "api_key": "sk-local",
+      "env": {
+        "OPENAI_BASE_URL": "{entry_url}",
+        "OPENAI_API_KEY": "{api_key}"
+      }
+    },
+    "geminicli": {
+      "api_key": "sk-local",
+      "env": {
+        "GOOGLE_GEMINI_BASE_URL": "{entry_url}",
+        "GOOGLE_GEMINI_API_KEY": "{api_key}"
+      }
+    }
+  },
+  "profiles": {
+    "claude-code/cliproxy/us1": {
+      "client": "claude-code",
+      "entry_url": "http://127.0.0.1:4010",
+      "stages": [
+        {
+          "name": "client-newapi",
+          "listen": "127.0.0.1:4010",
+          "upstream": "http://127.0.0.1:4011"
+        },
+        {
+          "name": "newapi-cliproxy",
+          "listen": "127.0.0.1:4011",
+          "upstream": "http://127.0.0.1:4012"
+        },
+        {
+          "name": "cliproxy-claude-us1",
+          "listen": "127.0.0.1:4012",
+          "upstream": "https://claude-us1.example.com"
+        }
+      ]
+    },
+    "claude-code/sub2api/us1": {
+      "client": "claude-code",
+      "entry_url": "http://127.0.0.1:4020",
+      "stages": [
+        {
+          "name": "client-newapi",
+          "listen": "127.0.0.1:4020",
+          "upstream": "http://127.0.0.1:4021"
+        },
+        {
+          "name": "newapi-sub2api",
+          "listen": "127.0.0.1:4021",
+          "upstream": "http://127.0.0.1:4022"
+        },
+        {
+          "name": "sub2api-claude-us1",
+          "listen": "127.0.0.1:4022",
+          "upstream": "https://claude-us1.example.com"
+        }
+      ]
+    },
+    "opencode/cliproxy/us1": {
+      "client": "opencode",
+      "entry_url": "http://127.0.0.1:4030",
+      "stages": [
+        {
+          "name": "client-newapi",
+          "listen": "127.0.0.1:4030",
+          "upstream": "http://127.0.0.1:4031"
+        },
+        {
+          "name": "newapi-cliproxy",
+          "listen": "127.0.0.1:4031",
+          "upstream": "http://127.0.0.1:4032"
+        },
+        {
+          "name": "cliproxy-claude-us1",
+          "listen": "127.0.0.1:4032",
+          "upstream": "https://claude-us1.example.com"
+        }
+      ]
+    },
+    "geminicli/sub2api/us1": {
+      "client": "geminicli",
+      "entry_url": "http://127.0.0.1:4040",
+      "stages": [
+        {
+          "name": "client-newapi",
+          "listen": "127.0.0.1:4040",
+          "upstream": "http://127.0.0.1:4041"
+        },
+        {
+          "name": "newapi-sub2api",
+          "listen": "127.0.0.1:4041",
+          "upstream": "http://127.0.0.1:4042"
+        },
+        {
+          "name": "sub2api-claude-us1",
+          "listen": "127.0.0.1:4042",
+          "upstream": "https://claude-us1.example.com"
+        }
+      ]
+    }
+  }
+}
+

@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tapchain"
+version = "0.1.0"
+description = "Hop-by-hop HTTP capture and routing helpers for LLM client chains"
+requires-python = ">=3.11"
+dependencies = [
+  "httpx",
+  "starlette",
+  "uvicorn",
+]
+
+[project.scripts]
+tapchain = "tapchain.cli:main"
+
