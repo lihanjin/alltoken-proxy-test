@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import re
 import shutil
+import zipfile
 from collections import defaultdict
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -342,6 +343,17 @@ def main() -> int:
         (folder / "README.txt").write_text("\n".join(summary_lines), encoding="utf-8")
 
     print(f"grouped exports written to {OUT}")
+
+    # 打包每个文件夹为zip
+    for folder in OUT.iterdir():
+        if folder.is_dir():
+            zip_path = OUT / f"{folder.name}.zip"
+            with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                for file in folder.rglob('*'):
+                    if file.is_file():
+                        zipf.write(file, file.relative_to(folder))
+            print(f"created {zip_path.name}")
+
     return 0
 
 
