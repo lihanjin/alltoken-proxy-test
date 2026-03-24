@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from http import HTTPStatus
 from urllib.parse import urljoin
 import uuid
 
@@ -24,6 +25,18 @@ def _join_upstream(base: str, request_path: str, query_string: str) -> str:
     if query_string:
         return f"{url}?{query_string}"
     return url
+
+
+def _decode_header_items(raw_headers: list[tuple[bytes, bytes]]) -> list[tuple[str, str]]:
+    items: list[tuple[str, str]] = []
+    for key, value in raw_headers:
+        items.append(
+            (
+                key.decode("latin-1", errors="replace"),
+                value.decode("latin-1", errors="replace"),
+            )
+        )
+    return items
 
 
 @dataclass
@@ -61,7 +74,13 @@ class CaptureProxy:
         capture = self.logger.capture_paths(trace_id, self.stage.name)
         request_body_path = capture.body_path("request")
         response_body_path = capture.body_path("response")
+        request_http_path = capture.http_path("request")
+        response_http_path = capture.http_path("response")
         request_preview = body_preview(request_body)
+        request_http_version = request.scope.get("http_version", "1.1")
+        request_raw_headers = _decode_header_items(list(request.scope.get("headers", [])))
+        request_raw_headers.append(("x-trace-id", trace_id))
+        request_start_line = f"{request.method} {request.url.path}{'?' + request.url.query if request.url.query else ''} HTTP/{request_http_version}"
 
         self.logger.write(
             {
@@ -76,6 +95,12 @@ class CaptureProxy:
                 "headers": request_headers,
                 "body": request_preview,
                 "body_path": self.logger.write_body(request_body_path, request_body),
+                "http_path": self.logger.write_http_message(
+                    request_http_path,
+                    request_start_line,
+                    request_raw_headers,
+                    request_body,
+                ),
                 "source": {"client": request.client.host if request.client else None, "port": request.client.port if request.client else None},
             }
         )
@@ -129,6 +154,29 @@ class CaptureProxy:
             }
         }
         response_headers["x-trace-id"] = trace_id
+        response_raw_headers = _decode_header_items(list(getattr(upstream_response.headers, "raw", [])))
+        response_raw_headers = [
+            (key, value)
+            for key, value in response_raw_headers
+            if key.lower()
+            not in {
+                "connection",
+                "keep-alive",
+                "proxy-authenticate",
+                "proxy-authorization",
+                "te",
+                "trailer",
+                "transfer-encoding",
+                "upgrade",
+                "content-length",
+            }
+        ]
+        response_raw_headers.append(("x-trace-id", trace_id))
+        try:
+            reason = HTTPStatus(upstream_response.status_code).phrase
+        except ValueError:
+            reason = ""
+        response_start_line = f"HTTP/1.1 {upstream_response.status_code} {reason}".rstrip()
 
         response_meta = {
             "event": "response_out",
@@ -186,7 +234,27 @@ class CaptureProxy:
                         **response_meta,
                         "bytes_written": bytes_written,
                         "completed": completed,
+                        "http_path": self.logger.write_http_message(
+                            response_http_path,
+                            response_start_line,
+                            response_raw_headers,
+                            response_body_path.read_bytes(),
+                        ),
                     }
+                )
+                self.logger.write_pretty_export(
+                    trace_id=trace_id,
+                    stage=self.stage.name,
+                    upstream=self.stage.upstream,
+                    method=request.method,
+                    path=str(request.url.path),
+                    query=request.url.query,
+                    request_headers=request_headers,
+                    request_body_path=request_body_path,
+                    response_headers=response_headers,
+                    response_body_path=response_body_path,
+                    status_code=upstream_response.status_code,
+                    completed=completed,
                 )
                 await upstream_response.aclose()
                 await client.aclose()
