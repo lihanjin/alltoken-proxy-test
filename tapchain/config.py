@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import json
+import os
 from typing import Any
 
 
@@ -105,13 +106,18 @@ def render_client_env(config: TapConfig, client_name: str, profile_name: str) ->
 
     profile = config.profiles[profile_name]
     client = config.clients[client_name]
+    api_key = client.api_key
+    if api_key.startswith("env:"):
+        env_name = api_key.split(":", 1)[1]
+        api_key = os.environ.get(env_name, "")
+        if not api_key:
+            raise KeyError(f"missing environment variable: {env_name}")
     env: dict[str, str] = {}
     for key, template in client.env.items():
         env[key] = (
             template.replace("{entry_url}", profile.entry_url)
-            .replace("{api_key}", client.api_key)
+            .replace("{api_key}", api_key)
             .replace("{profile}", profile.name)
             .replace("{client}", client.name)
         )
     return env
-

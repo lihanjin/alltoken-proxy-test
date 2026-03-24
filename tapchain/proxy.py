@@ -85,100 +85,117 @@ class CaptureProxy:
         upstream_headers["x-trace-id"] = trace_id
 
         timeout = httpx.Timeout(None)
-        async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
+        client = httpx.AsyncClient(timeout=timeout, follow_redirects=False)
+        try:
+            upstream_request = client.build_request(
+                method=request.method,
+                url=upstream_url,
+                headers=upstream_headers,
+                content=request_body,
+            )
+            upstream_response = await client.send(upstream_request, stream=True)
+        except httpx.HTTPError as exc:
+            await client.aclose()
+            self.logger.write(
+                {
+                    "event": "request_error",
+                    "trace_id": trace_id,
+                    "stage": self.stage.name,
+                    "upstream": self.stage.upstream,
+                    "error": repr(exc),
+                }
+            )
+            return PlainTextResponse(
+                f"upstream error in stage {self.stage.name}: {exc}",
+                status_code=502,
+                headers={"x-trace-id": trace_id},
+            )
+
+        response_headers = normalize_headers(dict(upstream_response.headers))
+        response_headers = {
+            key: value
+            for key, value in response_headers.items()
+            if key.lower()
+            not in {
+                "connection",
+                "keep-alive",
+                "proxy-authenticate",
+                "proxy-authorization",
+                "te",
+                "trailer",
+                "transfer-encoding",
+                "upgrade",
+                "content-length",
+            }
+        }
+        response_headers["x-trace-id"] = trace_id
+
+        response_meta = {
+            "event": "response_out",
+            "trace_id": trace_id,
+            "stage": self.stage.name,
+            "upstream": self.stage.upstream,
+            "status_code": upstream_response.status_code,
+            "headers": response_headers,
+            "body_path": str(response_body_path),
+        }
+
+        response_file = response_body_path.open("wb")
+        bytes_written = 0
+        completed = False
+        is_event_stream = upstream_response.headers.get("content-type", "").lower().startswith("text/event-stream")
+
+        async def iterator():
+            nonlocal bytes_written, completed
             try:
-                upstream_request = client.build_request(
-                    method=request.method,
-                    url=upstream_url,
-                    headers=upstream_headers,
-                    content=request_body,
-                )
-                upstream_response = await client.send(upstream_request, stream=True)
-            except httpx.HTTPError as exc:
+                async for chunk in upstream_response.aiter_raw():
+                    bytes_written += len(chunk)
+                    response_file.write(chunk)
+                    yield chunk
+                completed = True
+            except httpx.ReadError as exc:
+                if is_event_stream and bytes_written > 0:
+                    completed = True
                 self.logger.write(
                     {
-                        "event": "request_error",
+                        "event": "response_stream_error",
                         "trace_id": trace_id,
                         "stage": self.stage.name,
                         "upstream": self.stage.upstream,
                         "error": repr(exc),
+                        "bytes_written": bytes_written,
+                        "ignored": True,
                     }
                 )
-                return PlainTextResponse(
-                    f"upstream error in stage {self.stage.name}: {exc}",
-                    status_code=502,
-                    headers={"x-trace-id": trace_id},
+            except Exception as exc:
+                self.logger.write(
+                    {
+                        "event": "response_stream_error",
+                        "trace_id": trace_id,
+                        "stage": self.stage.name,
+                        "upstream": self.stage.upstream,
+                        "error": repr(exc),
+                        "bytes_written": bytes_written,
+                    }
                 )
+                raise
+            finally:
+                response_file.close()
+                self.logger.write(
+                    {
+                        **response_meta,
+                        "bytes_written": bytes_written,
+                        "completed": completed,
+                    }
+                )
+                await upstream_response.aclose()
+                await client.aclose()
 
-            response_headers = normalize_headers(dict(upstream_response.headers))
-            response_headers = {
-                key: value
-                for key, value in response_headers.items()
-                if key.lower()
-                not in {
-                    "connection",
-                    "keep-alive",
-                    "proxy-authenticate",
-                    "proxy-authorization",
-                    "te",
-                    "trailer",
-                    "transfer-encoding",
-                    "upgrade",
-                    "content-length",
-                }
-            }
-            response_headers["x-trace-id"] = trace_id
-
-            response_meta = {
-                "event": "response_out",
-                "trace_id": trace_id,
-                "stage": self.stage.name,
-                "upstream": self.stage.upstream,
-                "status_code": upstream_response.status_code,
-                "headers": response_headers,
-                "body_path": str(response_body_path),
-            }
-
-            response_file = response_body_path.open("wb")
-            bytes_written = 0
-            completed = False
-
-            async def iterator():
-                nonlocal bytes_written, completed
-                try:
-                    async for chunk in upstream_response.aiter_raw():
-                        bytes_written += len(chunk)
-                        response_file.write(chunk)
-                        yield chunk
-                    completed = True
-                except Exception as exc:
-                    self.logger.write(
-                        {
-                            "event": "response_stream_error",
-                            "trace_id": trace_id,
-                            "stage": self.stage.name,
-                            "upstream": self.stage.upstream,
-                            "error": repr(exc),
-                            "bytes_written": bytes_written,
-                        }
-                    )
-                    raise
-                finally:
-                    response_file.close()
-                    self.logger.write(
-                        {
-                            **response_meta,
-                            "bytes_written": bytes_written,
-                            "completed": completed,
-                        }
-                    )
-                    await upstream_response.aclose()
-
-            return StreamingResponse(
-                iterator(),
-                status_code=upstream_response.status_code,
-                headers=response_headers,
-            )
+        return StreamingResponse(
+            iterator(),
+            status_code=upstream_response.status_code,
+            headers=response_headers,
+        )
 
 
 def parse_listen(value: str) -> tuple[str, int]:
