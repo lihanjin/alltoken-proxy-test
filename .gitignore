@@ -4,3 +4,4 @@ logs/
 profiles.local.json
 .DS_Store
 tapchain.egg-info/
+.tmp/

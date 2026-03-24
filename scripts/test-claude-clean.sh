@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CLIPROXY_DIR="/Users/leo/code/CLIProxyAPIPlus"
 
 if [[ -z "${NEW_API_TOKEN:-}" ]]; then
   echo "NEW_API_TOKEN is required" >&2
@@ -17,6 +18,7 @@ pkill -f 'tapchain serve --stage newapi-cliproxy' 2>/dev/null || true
 
 rm -rf "${ROOT_DIR}/logs/raw"/* "${ROOT_DIR}/logs/exports"/* "${ROOT_DIR}/logs/grouped"/* 2>/dev/null || true
 : > "${ROOT_DIR}/logs/events.jsonl"
+rm -f "${CLIPROXY_DIR}/logs/"*v1-messages-*.log 2>/dev/null || true
 
 "${ROOT_DIR}/scripts/start-claude-cliproxy-stack.sh"
 exec "${ROOT_DIR}/scripts/run-clean-claude.sh"
