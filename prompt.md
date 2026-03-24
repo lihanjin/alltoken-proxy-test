@@ -5,9 +5,9 @@
 new Api ：sk-KsyBzneT6LWLBn8P7UOREFmcpLS9pfRwdmYqeQeZNa1sAdhx
 
 
-export NEW_API_TOKEN='sk-KsyBzneT6LWLBn8P7UOREFmcpLS9pfRwdmYqeQeZNa1sAdhx'
-unset ANTHROPIC_AUTH_TOKEN
-cd /Users/leo/code/alltoken-proxy-test
-eval "$(.venv/bin/python -m tapchain env --config profiles.local.json --profile claude-code/cliproxy/local --client claude-code)"
-claude
 
+cd /Users/leo/code/alltoken-proxy-test
+NEW_API_TOKEN='sk-KsyBzneT6LWLBn8P7UOREFmcpLS9pfRwdmYqeQeZNa1sAdhx' ./scripts/test-claude-clean.sh
+
+cd /Users/leo/code/alltoken-proxy-test
+.venv/bin/python ./scripts/build-grouped-exports.py

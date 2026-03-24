@@ -6,7 +6,8 @@ NEW_API_DIR="/Users/leo/Library/CloudStorage/SynologyDrive-leo/Documents/code/ne
 CLIPROXY_DIR="/Users/leo/code/CLIProxyAPIPlus"
 PYTHON_BIN="${ROOT_DIR}/.venv/bin/python"
 PROFILE="claude-code/cliproxy/local"
-TAPCHAIN_LOG="/tmp/tapchain-claude-cliproxy.log"
+CLIENT_STAGE_LOG="/tmp/tapchain-client-newapi.log"
+CPA_STAGE_LOG="/tmp/tapchain-newapi-cliproxy.log"
 
 require_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -30,14 +31,25 @@ docker compose -f "${NEW_API_DIR}/docker-compose.dev.yml" up -d backend web >/de
 echo "starting cliproxy..."
 docker compose -f "${CLIPROXY_DIR}/docker-compose.yml" up -d >/dev/null
 
-echo "restarting tapchain profile ${PROFILE}..."
-pkill -f "tapchain run --config profiles.local.json --profile ${PROFILE}" 2>/dev/null || true
+echo "restarting tapchain stages for ${PROFILE}..."
+pkill -f "tapchain run --config .*${PROFILE}" 2>/dev/null || true
+pkill -f "tapchain serve --stage client-newapi" 2>/dev/null || true
+pkill -f "tapchain serve --stage newapi-cliproxy" 2>/dev/null || true
 sleep 1
 
-nohup "${PYTHON_BIN}" -m tapchain run \
-  --config "${ROOT_DIR}/profiles.local.json" \
-  --profile "${PROFILE}" \
-  > "${TAPCHAIN_LOG}" 2>&1 &
+zsh -lc "'${PYTHON_BIN}' -m tapchain serve \
+  --stage client-newapi \
+  --listen 127.0.0.1:4010 \
+  --upstream http://127.0.0.1:3000 \
+  --log-dir '${ROOT_DIR}/logs' \
+  > '${CLIENT_STAGE_LOG}' 2>&1 < /dev/null &!"
+
+zsh -lc "'${PYTHON_BIN}' -m tapchain serve \
+  --stage newapi-cliproxy \
+  --listen 0.0.0.0:8317 \
+  --upstream http://127.0.0.1:9317 \
+  --log-dir '${ROOT_DIR}/logs' \
+  > '${CPA_STAGE_LOG}' 2>&1 < /dev/null &!"
 
 sleep 2
 
@@ -51,4 +63,6 @@ lsof -nP -iTCP:4010 -sTCP:LISTEN >/dev/null && echo "  client in: ok (http://127
 echo
 echo "new api channel upstream should be: http://host.docker.internal:8317"
 echo "claude-code entry should be:        http://127.0.0.1:4010"
-echo "tapchain log: ${TAPCHAIN_LOG}"
+echo "tapchain logs:"
+echo "  ${CLIENT_STAGE_LOG}"
+echo "  ${CPA_STAGE_LOG}"

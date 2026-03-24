@@ -1,0 +1,10 @@
+{
+  "claude-plugins-official": {
+    "source": {
+      "source": "github",
+      "repo": "anthropics/claude-plugins-official"
+    },
+    "installLocation": "/Users/leo/code/alltoken-proxy-test/.tmp/claude-clean-home/.claude/plugins/marketplaces/claude-plugins-official",
+    "lastUpdated": "2026-03-24T07:03:35.170Z"
+  }
+}

@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from http import HTTPStatus
 from urllib.parse import urljoin
+import json
 import uuid
 
 import httpx
@@ -37,6 +38,47 @@ def _decode_header_items(raw_headers: list[tuple[bytes, bytes]]) -> list[tuple[s
             )
         )
     return items
+
+
+def _maybe_rewrite_request_body(stage_name: str, body: bytes) -> tuple[bytes, dict[str, str] | None]:
+    if stage_name != "client-newapi" or not body:
+        return body, None
+
+    try:
+        payload = json.loads(body.decode("utf-8"))
+    except Exception:
+        return body, None
+
+    if not isinstance(payload, dict):
+        return body, None
+
+    model = payload.get("model")
+    if model != "claude-haiku-4-5-20251001":
+        return body, None
+
+    tools = payload.get("tools")
+    if tools != []:
+        return body, None
+
+    system = payload.get("system")
+    if not isinstance(system, list):
+        return body, None
+
+    system_text = "\n".join(
+        item.get("text", "")
+        for item in system
+        if isinstance(item, dict) and isinstance(item.get("text"), str)
+    )
+    if "Generate a concise, sentence-case title" not in system_text:
+        return body, None
+
+    payload["model"] = "claude-sonnet-4-6"
+    rewritten = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    return rewritten, {
+        "reason": "claude_code_title_request",
+        "original_model": "claude-haiku-4-5-20251001",
+        "rewritten_model": "claude-sonnet-4-6",
+    }
 
 
 @dataclass
@@ -108,6 +150,19 @@ class CaptureProxy:
         upstream_url = _join_upstream(self.stage.upstream, request.url.path, request.url.query)
         upstream_headers = sanitize_hop_headers(dict(request.headers))
         upstream_headers["x-trace-id"] = trace_id
+        upstream_body, rewrite_info = _maybe_rewrite_request_body(self.stage.name, request_body)
+        if rewrite_info is not None:
+            upstream_headers.pop("content-length", None)
+            self.logger.write(
+                {
+                    "event": "request_rewrite",
+                    "trace_id": trace_id,
+                    "stage": self.stage.name,
+                    **rewrite_info,
+                }
+            )
+        else:
+            upstream_body = request_body
 
         timeout = httpx.Timeout(None)
         client = httpx.AsyncClient(timeout=timeout, follow_redirects=False)
@@ -116,10 +171,24 @@ class CaptureProxy:
                 method=request.method,
                 url=upstream_url,
                 headers=upstream_headers,
-                content=request_body,
+                content=upstream_body,
             )
             upstream_response = await client.send(upstream_request, stream=True)
         except httpx.HTTPError as exc:
+            error_body = f"upstream error in stage {self.stage.name}: {exc}".encode("utf-8", errors="replace")
+            response_headers = {"content-type": "text/plain; charset=utf-8", "x-trace-id": trace_id}
+            response_raw_headers = [
+                ("content-type", "text/plain; charset=utf-8"),
+                ("x-trace-id", trace_id),
+            ]
+            response_start_line = "HTTP/1.1 502 Bad Gateway"
+            self.logger.write_body(response_body_path, error_body)
+            self.logger.write_http_message(
+                response_http_path,
+                response_start_line,
+                response_raw_headers,
+                error_body,
+            )
             await client.aclose()
             self.logger.write(
                 {
@@ -128,12 +197,29 @@ class CaptureProxy:
                     "stage": self.stage.name,
                     "upstream": self.stage.upstream,
                     "error": repr(exc),
+                    "status_code": 502,
+                    "body_path": str(response_body_path),
+                    "http_path": str(response_http_path),
                 }
             )
-            return PlainTextResponse(
-                f"upstream error in stage {self.stage.name}: {exc}",
+            self.logger.write_pretty_export(
+                trace_id=trace_id,
+                stage=self.stage.name,
+                upstream=self.stage.upstream,
+                method=request.method,
+                path=str(request.url.path),
+                query=request.url.query,
+                request_headers=request_headers,
+                request_body_path=request_body_path,
+                response_headers=response_headers,
+                response_body_path=response_body_path,
                 status_code=502,
-                headers={"x-trace-id": trace_id},
+                completed=True,
+            )
+            return PlainTextResponse(
+                error_body.decode("utf-8", errors="replace"),
+                status_code=502,
+                headers=response_headers,
             )
 
         response_headers = normalize_headers(dict(upstream_response.headers))
