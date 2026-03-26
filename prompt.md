@@ -1,14 +1,14 @@
-在test.js文件夹写一简单的递归
+在 HubTo 项目的 test.js 文件夹写一简单的递归
 
 new Api ：sk-KsyBzneT6LWLBn8P7UOREFmcpLS9pfRwdmYqeQeZNa1sAdhx
 
 
 
 
-cd /Users/leo/code/alltoken-proxy-test
+cd "$(git rev-parse --show-toplevel)"
 NEW_API_TOKEN='sk-KsyBzneT6LWLBn8P7UOREFmcpLS9pfRwdmYqeQeZNa1sAdhx' ./scripts/test-claude-clean.sh --dangerously-skip-permissions
 
-cd /Users/leo/code/alltoken-proxy-test
+cd "$(git rev-parse --show-toplevel)"
 .venv/bin/python ./scripts/build-grouped-exports.py
 
 

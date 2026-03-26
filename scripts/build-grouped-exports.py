@@ -10,7 +10,8 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 
-ROOT = Path("/Users/leo/code/alltoken-proxy-test")
+# Resolve the repository root relative to this script so the HubTo checkout is portable.
+ROOT = Path(__file__).resolve().parents[1]
 LOGS = ROOT / "logs"
 EVENTS = LOGS / "events.jsonl"
 RAW = LOGS / "raw"
